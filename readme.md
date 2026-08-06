@@ -192,6 +192,7 @@ A simple workaround is toggling automatic time:
 adb shell settings put global auto_time 0
 adb shell settings put global auto_time 1
 ```
+Or turing automatic date and time off and then on
 
 This immediately triggers a new NTP request.
 
