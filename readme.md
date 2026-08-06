@@ -1,11 +1,11 @@
-# Simple Python NTP Server for Android TV / Android Box
+# Android Local NTP
 
-A lightweight NTP (Network Time Protocol) server written in pure Python.
+A lightweight NTP (Network Time Protocol) server written in pure Python for Android TV boxes and Android devices.
 
 This project was created to solve a very specific problem:
 
 - Android TV boxes without a battery-backed RTC (Real Time Clock)
-- Frequent power outages
+- Frequent power outages causing the system clock to reset
 - Android configured to synchronize time from Internet NTP servers that are blocked or unreachable
 - Need a simple local NTP server without installing Chrony, Docker, or other services
 
@@ -13,35 +13,41 @@ The server listens for NTP requests and replies with the current system time fro
 
 ---
 
-# Why I Created This
+## Why I Created This
 
-I have a android 12 TV Box with frequent power outages and in every reboot resets the device clock. Automatic network time pointed to `time.google.com` and Google NTP servers were unreachable due to network restrictions. Changing the Android NTP server to a local computer solved the problem.
+I have an Android 12 TV Box that loses its system time after every power outage because it does not have a battery-backed RTC.
+
+Normally Android synchronizes with public NTP servers (such as Google's), but due to network restrictions they were unreachable from my network.
+
+Changing the Android NTP server to a computer on my local network completely solved the problem.
 
 ---
 
-# Features
+## Features
 
 - Pure Python (standard library only)
 - No external dependencies
-- Single file
+- Single-file application
 - Works on Windows and Linux
 - Supports NTP v3 and v4 clients
 - Configurable host and port
+- Configurable time offset (hours and minutes)
 - Optional verbose logging
-- Logs incoming requests
+- Logs incoming client requests
 - Graceful shutdown (Ctrl+C)
+- Version information (`--version`)
 
 ---
 
-# Requirements
+## Requirements
 
 - Python 3.8+
 - UDP port 123 available
-- Firewall allowing inbound UDP 123
+- Firewall allowing inbound UDP port 123
 
 ---
 
-# Running
+## Running
 
 Default:
 
@@ -67,19 +73,46 @@ Custom bind address:
 python ntp_server.py --host 192.168.1.5
 ```
 
----
+Offset by one hour:
 
-# Example Output
-
-```
-[2026-08-06 18:54:09] NTP server listening on 0.0.0.0:123
-[2026-08-06 18:54:19] Request from 192.168.1.5:40739 (NTPv3, mode=3)
-[2026-08-06 18:54:19] Response sent to 192.168.1.108
+```bash
+python ntp_server.py --offset-hours -1
 ```
 
+Offset by 30 minutes:
+
+```bash
+python ntp_server.py --offset-minutes 30
+```
+
+Combine offsets:
+
+```bash
+python ntp_server.py --offset-hours -1 --offset-minutes 15
+```
+
+Display version:
+
+```bash
+python ntp_server.py --version
+```
+
 ---
 
-# Configuring Android
+## Example Output
+
+```
+[2026-08-06 19:30:04] Android Local NTP v1.1.0
+[2026-08-06 19:30:04] Listening on 0.0.0.0:123
+[2026-08-06 19:30:04] Effective time offset: +0 minute(s)
+
+[2026-08-06 19:30:15] Request from 192.168.1.108:40739 (NTPv3, mode=3)
+[2026-08-06 19:30:15] Response sent to 192.168.1.108
+```
+
+---
+
+## Configuring Android
 
 Using ADB:
 
@@ -98,7 +131,7 @@ adb shell settings get global ntp_server
 
 ---
 
-# How It Works
+## How It Works
 
 Android sends a standard NTP request (UDP port 123).
 
@@ -107,10 +140,10 @@ Android Box
       │
       │ UDP 123
       ▼
-Python NTP Server
+Android Local NTP
       │
       ▼
-Current System Time
+Host Computer System Clock
 ```
 
 The server:
@@ -118,12 +151,13 @@ The server:
 1. Receives the 48-byte NTP packet.
 2. Copies the client's transmit timestamp.
 3. Generates the required NTP timestamps.
-4. Sends a valid server response.
-5. Android updates its clock.
+4. Applies the configured time offset (if any).
+5. Sends a valid NTP response.
+6. Android updates its clock.
 
 ---
 
-# Verifying Synchronization
+## Verifying Synchronization
 
 On Android:
 
@@ -148,59 +182,77 @@ Android has not successfully synchronized yet.
 
 ---
 
-# Troubleshooting
+## Troubleshooting
 
-## No requests appear in the server
+### No requests appear in the server
 
 Check:
 
-- Android is using the correct NTP server
-
-```
+```bash
 adb shell settings get global ntp_server
 ```
 
-- The PC firewall allows UDP port 123.
-- The computer and Android device are on the same network.
+Verify that:
+
+- Android is using the correct NTP server.
+- UDP port 123 is allowed through the firewall.
+- The Android device and computer are on the same network.
 
 ---
 
-## Android sends requests but time does not update
+### Android sends requests but time does not update
 
-Verify that the computer's clock is correct.
+Verify that the computer's system clock is correct.
 
-This server returns the host computer's current system time.
-
-If the computer's time is incorrect, Android will synchronize to the incorrect time.
+The server always returns the host computer's current time.
 
 ---
 
-## Android does not retry after the computer starts
+### Android does not retry after the computer starts
 
-Android does not continuously poll for time.
+On the tested Android 12 TV Box, the observed behavior was:
 
-On Android 12 the observed behavior was:
+- Retry approximately every minute for a few attempts.
+- If all retries fail, retry roughly once every 24 hours.
 
-- Retry every minute for a few attempts
-- Afterwards retry approximately every 24 hours
+This behavior may vary depending on the Android version and manufacturer.
 
-If the computer starts after those retries have already failed, Android may keep the incorrect time.
-
-A simple workaround is toggling automatic time:
+A simple workaround is toggling Automatic Date & Time:
 
 ```bash
 adb shell settings put global auto_time 0
 adb shell settings put global auto_time 1
 ```
-Or turing automatic date and time off and then on
+
+or manually turning **Automatic Date & Time** off and back on.
 
 This immediately triggers a new NTP request.
 
 ---
 
-## Port 123 already in use
+### Incorrect displayed time
 
-Check which application is using UDP port 123.
+NTP only provides UTC.
+
+The Android device applies its configured timezone.
+
+Some Android TV boxes contain outdated timezone (tzdata) information, which may cause incorrect daylight saving time adjustments.
+
+If needed, the server can temporarily compensate using:
+
+```bash
+python ntp_server.py --offset-hours -1
+```
+
+or
+
+```bash
+python ntp_server.py --offset-minutes -60
+```
+
+---
+
+### Port 123 already in use
 
 Windows:
 
@@ -214,23 +266,23 @@ Linux:
 sudo ss -lunp | grep :123
 ```
 
-Stop the conflicting service or choose another port (for testing only).
+Stop the conflicting application or use another port for testing.
 
-> Android NTP uses UDP port 123 by default.
+> Android uses UDP port 123 for NTP.
 
 ---
 
-## Windows Firewall
+### Windows Firewall
 
 Allow inbound UDP port 123.
 
-Otherwise Android will send requests but never receive a reply.
+Otherwise Android will send requests but never receive replies.
 
 ---
 
-# Debugging
+## Debugging
 
-Wireshark filter:
+Wireshark display filter:
 
 ```
 udp.port == 123
@@ -254,9 +306,9 @@ NTP
 
 ---
 
-# Known Limitations
+## Known Limitations
 
-This project is intentionally minimal.
+This project is intentionally lightweight.
 
 It is **not** intended to replace full NTP implementations such as:
 
@@ -266,30 +318,42 @@ It is **not** intended to replace full NTP implementations such as:
 
 Missing features include:
 
-- Multiple upstream NTP servers
 - Clock discipline
 - Drift correction
 - Leap second handling
+- Multiple upstream servers
 - Authentication
 - High-precision synchronization
 
-For home networks or Android TV boxes that simply need the correct time after boot, this implementation is sufficient.
+For home networks and Android TV boxes that simply need the correct time after boot, these features are generally unnecessary.
 
 ---
 
-# Tested On
+## Tested On
 
-Server:
+### Server
 
 - Windows 11
-- Python 3.x
+- Python 3.13
 
-Client:
+### Client
 
 - Android 12 TV Box
 
 ---
 
-# License
+## Roadmap
 
-MIT
+- [x] Basic NTP server
+- [x] Android compatibility
+- [x] Configurable host and port
+- [x] Configurable time offset
+- [x] Version information
+- [ ] Optional log file output
+- [ ] Standalone executable (PyInstaller)
+
+---
+
+## License
+
+MIT License
