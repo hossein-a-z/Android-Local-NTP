@@ -106,8 +106,8 @@ python ntp_server.py --version
 [2026-08-06 19:30:04] Listening on 0.0.0.0:123
 [2026-08-06 19:30:04] Effective time offset: +0 minute(s)
 
-[2026-08-06 19:30:15] Request from 192.168.1.108:40739 (NTPv3, mode=3)
-[2026-08-06 19:30:15] Response sent to 192.168.1.108
+[2026-08-06 19:30:15] Request from 192.168.1.8:40739 (NTPv3, mode=3)
+[2026-08-06 19:30:15] Response sent to 192.168.1.8
 ```
 
 ---
